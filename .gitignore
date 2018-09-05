@@ -1,0 +1,16 @@
+# any dev scripts
+.dev*
+
+# any eggs
+*egg*
+
+# virtual environments
+env
+.env
+/env
+
+# any pycache
+__pycache__
+pycache
+/__pycache__
+/pycache

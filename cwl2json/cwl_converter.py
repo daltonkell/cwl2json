@@ -45,13 +45,13 @@ class Converter(object):
                    'properties': {},
                    })
         for k, v in jsondict.items(): # map to valid JSON type
+
             if isinstance(v, dict): # send to map2json to loop & map types
                 if "file" in v.keys():
-                     #pdb.set_trace()
                      v['file']['required'] = ["path"] # should be inside "file"
                      # insert these necessary keys to be able to validate the fp is a string
                      v.update(fp_insert)
-                _v = self.map2json(v)
+                _v = self.map2json(v) # map the keys to its appropriate JSON value
             elif v == []:
                 _v = 'null'
             else:
@@ -73,7 +73,7 @@ class Converter(object):
         out = dict(_dict) # create new memory address to avoid mutating orig
         for k, v in out.items(): # loop through all k-v pairs
             if not (isinstance(v, dict) or isinstance(v, list)) and v in cwl2jsonmap.keys():
-                _v = cwl2jsonmap.get(v) 
+                _v = cwl2jsonmap.get(v) # if not a dict, execute the mapping
             elif isinstance(v, dict): # if dict, need to loop through
                 _v = self.map2json(v) # recursion
             elif v == []:
@@ -87,5 +87,4 @@ class Converter(object):
             props = out['inputs']
             del out['inputs']
             out['properties'] = props
-                
         return out

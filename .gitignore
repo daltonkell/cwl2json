@@ -1,6 +1,10 @@
 # any dev scripts
 .dev*
 
+# any cwl files
+*.cwl
+preprocess.yml
+
 # any eggs
 *egg*
 

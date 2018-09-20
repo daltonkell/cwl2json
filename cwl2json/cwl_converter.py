@@ -1,67 +1,139 @@
-cwl2jsonmap = {
-  "none": 'null',
-  "boolean": 'boolean',
-  "int": 'integer',
-  "long": 'number',
-  "float": 'number',
-  "double": 'number',
-  "string": 'string',
-  "File": 'object',
-  "Directory": 'object',
-  # 'class' synonymous to 'type'
-  "class": "type"
-}
+all_required = [] # updated with every entry in all 'required' lists
 
 class Converter(object):
-    """Convert CWL in YAML syntax to valid JSON Schema syntax"""
     
-    def __init__(self):
-        pass
+    """
+    Convert CWL in YAML syntax to valid JSON Schema syntax
 
-    def convert(self, jsondict, is_schema=False):
+    Examples
+    ========
+    
+    YAML example
+    ------------
+    $base: "http://...",
+    class: CommandLineTool,
+    baseCommand: bash,
+    inputs:
+      file:
+        type: File,
+        inputBinding:
+          position: 1
+    outputs: []
+    
+    Above YAML, loaded as dict
+    --------------------------
+    {
+      
+      $base: "http://...",
+      class: CommandLineTool,          *To get to the below schema, follow these steps:*
+      baseCommand: bash,
+      inputs: { <--------------------- for each key inside inputs, if val is dict,
+        file: {                        insert
+          type: File,                  required: []; what goes inside [] will be mapped
+          inputBinding: {
+            position: 1
+          }
+        } <--------------------------- also inside inputs, we insert a new dict:
+      },                               properties: { }
+      outputs: []                                   |--> inside this dict, for each item in required,  
+    }                                                    insert:
+                                                         item: {type: <sometype>}
+    Valid JSONSchema of the above:
+    ------------------------------
+    {
+      
+      $base: "http://...",
+      class: CommandLineTool,
+      baseCommand: bash,
+      properties: {             # properties1
+        file: {
+          type: File,
+          inputBinding: {
+            position: 1
+          },
+          required: [
+            path
+          ]
+        },
+        properties: {           # properties2 
+          path: {
+            type: string
+          }
+        }
+      },
+      outputs: []
+    }
+    
+    """
+
+    def __init__(self):
+        self.cwl2jsonmap = {  # CWL types to JSON types
+          "none": 'null',
+          "boolean": 'boolean',
+          "int": 'integer',
+          "long": 'number',
+          "float": 'number',
+          "double": 'number',
+          "string": 'string',
+          "File": 'object',
+          "Directory": 'object',
+          # 'class' synonymous to 'type'
+          "class": "type"
+        }
+
+        self.required_map = {  # required fields for input keys
+          "file": 'path'
+        }
+
+        self.fieldtype = {  # types for the required fields
+            'path': 'string'
+        }
+
+    def map_required(self, key):
+        """Take a given input key and ouput the name of the field
+        a user must supply a value for in order for that input key
+        to be valid in a JSONSchema. For example, if the key is `file`
+        a required field in a JSONSchema would be `path`, as the user
+        must supply a valid path to this file.
+
+        :param str key: input key"""
+
+        # NOTE bit inefficient right now?
+        for _k in self.required_map.keys():
+            if _k in key: # if any part of the key is in _k (e.g. file in prefile)
+                key = _k # rename the key so we get the right type
+        field = self.required_map.get(key, None)
+        return field
+
+    def field_type(self, field):
+        """Take a given field and output the type that field should be.
+
+        :param str field: name of field"""
+
+        _type = self.fieldtype.get(field, None)
+        return _type
+
+
+    def convert(self, cdict, is_schema=False):
         """Main converter method. Loops through key-value pairs in a YAML dict 
            (loaded from a .cwl) and creates a corresponding JSON schema. This 
            schema can then be used to validate an input .yml file, which is 
            similarly loaded as a dictionary via yaml and json modules. 
 
-           :param dict jsondict: JSON dictionary from CWL file
+           :param dict cdict: JSON dictionary from CWL file
            :param bool is_schema: specify if returned JSON should be a schema"""
-
-        fp_insert = {
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Filepath to said file"
-                }
-            }
-        }
+        if 'inputs' in cdict.keys():
+            for k, v in cdict['inputs'].items():
+                if isinstance(v, dict): # insert key `required: []`
+                    cdict['inputs'][k]['required'] = [self.map_required(k)]
+                    all_required.append(self.map_required(k)) # store all here
+            cdict['inputs']['properties'] = {} # insert properties2 dict
+            for field in all_required:
+                cdict['inputs']['properties'][field] = {'type': self.field_type(field)}
         
-        jout = {}
-        if is_schema: # make a full JSONSchema dict
-            jout.update({
-                   '$schema': 'http://json-schema.org/draft-07/schema#',
-                   'type': 'object',
-                   'title': "SchemaFromCWL",
-                   'properties': {},
-                   })
-        for k, v in jsondict.items(): # map to valid JSON type
-
-            if isinstance(v, dict): # send to map2json to loop & map types
-                if "file" in v.keys():
-                     v['file']['required'] = ["path"] # should be inside "file"
-                     # insert these necessary keys to be able to validate the fp is a string
-                     v.update(fp_insert)
-                _v = self.map2json(v) # map the keys to its appropriate JSON value
-            elif v == []:
-                _v = 'null'
-            else:
-                _v = v # don't change value
-            jout[k] = _v
-
-        if 'inputs' in jout.keys(): # rename to properties for validation keyword
-            jout['properties'] = jout['inputs']
-            del jout['inputs']
-        return jout
+        # then we convert all the CWL types to JSON types
+        out = self.map2json(cdict)
+        return out
 
     def map2json(self, _dict):
         """Map YAML types to JSON types from a dictionary
@@ -72,8 +144,8 @@ class Converter(object):
 
         out = dict(_dict) # create new memory address to avoid mutating orig
         for k, v in out.items(): # loop through all k-v pairs
-            if not (isinstance(v, dict) or isinstance(v, list)) and v in cwl2jsonmap.keys():
-                _v = cwl2jsonmap.get(v) # if not a dict, execute the mapping
+            if not (isinstance(v, dict) or isinstance(v, list)) and v in self.cwl2jsonmap.keys():
+                _v = self.cwl2jsonmap.get(v) # if not a dict, execute the mapping
             elif isinstance(v, dict): # if dict, need to loop through
                 _v = self.map2json(v) # recursion
             elif v == []:

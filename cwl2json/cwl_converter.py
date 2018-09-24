@@ -5,8 +5,8 @@ class Converter(object):
     """
     Convert CWL in YAML syntax to valid JSON Schema syntax
 
-    Examples
-    ========
+    CommandLineTool Example
+    =======================
     
     YAML example
     ------------
@@ -64,6 +64,94 @@ class Converter(object):
       outputs: []
     }
     
+
+    Workflow Example
+    ================
+
+    Workflow .cwl (YAML format)
+    ---------------------------
+
+    cwlVersion: v1.0
+    class: Workflow
+    inputs:
+      message: string
+      infile : File?  # <- ----------------------- ? indicates optional input
+    
+    steps:
+     
+      print:
+        run: test-echo.cwl
+        in: 
+          message: message
+        out: []
+    
+      wrf:
+        run: wrf-test-cwl.cwl
+        in:
+          file: infile
+        out: []
+    outputs: []
+
+    Above YAML, loaded as dict
+    --------------------------
+
+    {
+      cwlVersion: v1.0,
+      class: Workflow,
+      inputs:{
+        message: string
+        infile : File?
+      },
+      steps:{
+       
+        print:{
+          run: test-echo.cwl
+          in: 
+            message: message
+          out: []
+        }
+        wrf:{
+          run: wrf-test-cwl.cwl
+          in:
+            file: infile
+          out: []
+        }
+      },
+      outputs: []
+    }
+
+    In proper JSONSchema form:
+    --------------------------
+
+    {
+      cwlVersion: v1.0,
+      class: Workflow,
+      properties:{  # <--------------- use properties instead of inputs
+        message: {
+          type: string  # <----------- give each property a type
+        },
+        infile :{
+          type: object
+        }
+      },
+      required: [message], # <-------- identify the required properties
+      steps:{
+       
+        print:{
+          run: test-echo.cwl
+          in: 
+            message: message
+          out: []
+        }
+        wrf:{
+          run: wrf-test-cwl.cwl
+          in:
+            file: infile
+          out: []
+        }
+      },
+      outputs: []
+    }
     """
 
     def __init__(self):
@@ -114,7 +202,7 @@ class Converter(object):
         return _type
 
 
-    def convert(self, cdict, is_schema=False):
+    def convert(self, cdict):
         """Main converter method. Loops through key-value pairs in a YAML dict 
            (loaded from a .cwl) and creates a corresponding JSON schema. This 
            schema can then be used to validate an input .yml file, which is 
@@ -134,6 +222,28 @@ class Converter(object):
         # then we convert all the CWL types to JSON types
         out = self.map2json(cdict)
         return out
+
+
+    def convert_workflow(self, wdict):
+        """Insert the proper nested fields into a Workflow document to make it
+        a valid JSONSchema.
+
+        :param dict wdict: dict loaded from a Workflow document"""
+
+        _inputs = wdict['inputs'] #inputs dict
+        req = [] # empty array for required, to be updated
+        for k, v in _inputs.items():
+            # create the proper nesting
+            if v.endswith('?'): # optional, do not add to required
+                v = v.replace('?', '') # strip off the '?'
+            else:
+                req.append(k) # add key to required
+            _inputs[k] = {'type': self.cwl2jsonmap.get(v)}
+
+        wdict['required'] = req # put the required field into the schema
+        wdict['properties'] = _inputs # rename the inputs key, delete inputs key
+        del wdict['inputs']
+        return wdict 
 
     def map2json(self, _dict):
         """Map YAML types to JSON types from a dictionary

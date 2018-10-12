@@ -14,48 +14,155 @@ The [Common Workflow Language](https://commonwl.org)(CWL) implements two documen
 
 In short, a CommandLineTool is a standlone document which executes a program upon receiving some input, produces some output, and then terminates. A Workflow, on the other hand, can describe multiple steps, where steps may be linked to outputs of others. 
 
-This module only supports converting CommandLineTool documents from YAML syntax to valid JSON. Why? Have a look at the following:
+This module only supports converting both CommandLineTool and Workflow documents from YAML syntax to valid JSON.
 
- - a CommandLineTool example:
+### CommandLineTool Example
+
+   
+__YAML__
 ```
-#!/usr/bin/env cwl-runner
-
-cwlVersion: v1.0
-class: CommandLineTool
-baseCommand: bash
-inputs:
-  file:
-    type: File    # <--- within the inputs, we declare the type of the specific input
-                  # (among other things)
-    inputBinding:
-      position: 1
-outputs: []
+    $base: "http://...",
+    class: CommandLineTool,
+    baseCommand: bash,
+    inputs:
+      file:
+        type: File,
+        inputBinding:
+          position: 1
+    outputs: []
+```    
+__Above YAML, loaded as dict__
 ```
- - a Workflow example:
-
+    {
+      
+      $base: "http://...",
+      class: CommandLineTool,          *To get to the below schema, follow these steps:*
+      baseCommand: bash,
+      inputs: { <--------------------- for each key inside inputs, if val is dict,
+        file: {                        insert
+          type: File,                  required: []; what goes inside [] will be mapped
+          inputBinding: {
+            position: 1
+          }
+        } <--------------------------- also inside inputs, we insert a new dict:
+      },                               properties: { }
+      outputs: []                                   |--> inside this dict, for each item in required,  
+    }                                                    insert:
+                                                         item: {type: <sometype>}
 ```
-#!/usr/bin/env cwl-runner
+__Valid JSONSchema of the above:__
+```
+    {
+      
+      $base: "http://...",
+      class: CommandLineTool,
+      baseCommand: bash,
+      properties: {             # properties1
+        file: {
+          type: File,
+          inputBinding: {
+            position: 1
+          },
+          required: [
+            path
+          ]
+        },
+          required: [
+            path
+          ]
+        },
+        properties: {           # properties2 
+          path: {
+            type: string
+          }
+        }
+      },
+      outputs: []
+    }
+    
+```
 
-cwlVersion: v1.0
-class: Workflow
-inputs:
-  message: string  # <--- inputs in workflows do not allow typing; instead, they would
-                   # be defined in one of these 
-  infile : File                               |
-                                              |
-steps:                                        |
-                                              |
-  print:                                      /
-    run: test-echo.cwl <----------------------
-    in:                                       |
-      message: message                        |
-    out: []                                   |
-                                              |
-  wrf:                                        /
-    run: wrf-test-cwl.cwl <-------------------                     
-    in:
-      file: infile
-    out: []
-outputs: []
+### Workflow Example
 
+__Workflow .cwl (YAML format)__
+```
+    cwlVersion: v1.0
+    class: Workflow
+    inputs:
+      message: string
+      infile : File?  # <- ----------------------- ? indicates optional input
+    
+    steps:
+     
+      print:
+        run: test-echo.cwl
+        in: 
+          message: message
+        out: []
+    
+      wrf:
+        run: wrf-test-cwl.cwl
+        in:
+          file: infile
+        out: []
+    outputs: []
+```
+__Above YAML, loaded as dict__
+```
+    {
+      cwlVersion: v1.0,
+      class: Workflow,
+      inputs:{
+        message: string
+        infile : File?
+      },
+      steps:{
+       
+        print:{
+          run: test-echo.cwl
+          in: 
+            message: message
+          out: []
+        }
+        wrf:{
+          run: wrf-test-cwl.cwl
+          in:
+            file: infile
+          out: []
+        }
+      },
+      outputs: []
+    }
+```
+__In proper JSONSchema form:__
+```
+    {
+      cwlVersion: v1.0,
+      class: Workflow,
+      properties:{  # <--------------- use properties instead of inputs
+        message: {
+          type: string  # <----------- give each property a type
+        },
+        infile :{
+          type: object
+        }
+      },
+      required: [message], # <-------- identify the required properties
+      steps:{
+       
+        print:{
+          run: test-echo.cwl
+          in: 
+            message: message
+          out: []
+        }
+        wrf:{
+          run: wrf-test-cwl.cwl
+          in:
+            file: infile
+          out: []
+        }
+      },
+      outputs: []
+    }
 ```

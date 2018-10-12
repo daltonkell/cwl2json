@@ -4,6 +4,7 @@
 # any cwl files
 *.cwl
 preprocess.yml
+_*.yml
 
 # any eggs
 *egg*
